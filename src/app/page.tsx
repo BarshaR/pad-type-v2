@@ -10,6 +10,7 @@ export default function Home() {
       </div>
       <div className="grid justify-center border-width: 2px;">
         <Textarea />
+        ``
       </div>
       <div className="grid justify-center border-width: 2px;">
         <h1>hello</h1>
