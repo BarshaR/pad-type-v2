@@ -2,12 +2,17 @@
 
 import { useState, useRef, useEffect, ChangeEvent } from "react";
 import Editor from "@monaco-editor/react";
+import type * as monaco from "monaco-editor";
+import type { editor } from "monaco-editor";
+import { passages } from "./passages";
+import { ControlsBar } from "./ControlsBar";
+import { StatsPanel } from "./StatsPanel";
 
 export default function TypeTest() {
-  const typingEditorRef = useRef<any>(null);
-  const typingEditorMonacoRef = useRef<any>(null);
-  const passageEditorRef = useRef<any>(null);
-  const passageEditorMonacoRef = useRef<any>(null);
+  const typingEditorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  const typingEditorMonacoRef = useRef<typeof monaco | null>(null);
+  const passageEditorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  const passageEditorMonacoRef = useRef<typeof monaco | null>(null);
   const [code, setCode] = useState<string>("");
   const [testPassage, setTestPassage] = useState<string>(
     "// Loading test passage..."
@@ -18,33 +23,6 @@ export default function TypeTest() {
   const [wpm, setWpm] = useState<number>(0);
   const [isComplete, setIsComplete] = useState<boolean>(false);
   const [selectedPassage, setSelectedPassage] = useState<string>("0");
-  const passages: { label: string; value: string; code: string }[] = [
-    {
-      label: "Hello World",
-      value: "0",
-      code: `console.log('Hello, world!');`,
-    },
-    {
-      label: "Add Function",
-      value: "1",
-      code: `function add(a, b) {\n  return a + b;\n}\nconsole.log(add(2, 3));`,
-    },
-    {
-      label: "Factorial",
-      value: "2",
-      code: `function factorial(n) {\n  if (n <= 1) return 1;\n  return n * factorial(n - 1);\n}\nconsole.log(factorial(5));`,
-    },
-    {
-      label: "FizzBuzz",
-      value: "3",
-      code: `for (let i = 1; i <= 15; i++) {\n  let out = '';\n  if (i % 3 === 0) out += 'Fizz';\n  if (i % 5 === 0) out += 'Buzz';\n  console.log(out || i);\n}`,
-    },
-    {
-      label: "Reverse String",
-      value: "4",
-      code: `function reverse(str) {\n  return str.split('').reverse().join('');\n}\nconsole.log(reverse('hello'));`,
-    },
-  ];
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number | null>(null);
 
@@ -102,7 +80,10 @@ export default function TypeTest() {
     };
   }, []);
 
-  const handlePassageEditorDidMount = (inEditor: any, inMonaco: any) => {
+  const handlePassageEditorDidMount = (
+    inEditor: editor.IStandaloneCodeEditor,
+    inMonaco: typeof monaco
+  ) => {
     passageEditorRef.current = inEditor;
     passageEditorMonacoRef.current = inMonaco;
     setTestPassage(
@@ -110,9 +91,32 @@ export default function TypeTest() {
     );
   };
 
-  const handleEditorDidMount = (inEditor: any, inMonaco: any) => {
+  const handleEditorDidMount = (
+    inEditor: editor.IStandaloneCodeEditor,
+    inMonaco: typeof monaco
+  ) => {
     typingEditorRef.current = inEditor;
     typingEditorMonacoRef.current = inMonaco;
+    // Prevent paste in the typing editor
+    inEditor.onKeyDown((e: monaco.IKeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.code === "KeyV") {
+        e.preventDefault();
+        window.alert(
+          "Nice try! Copy-pasting is disabled. Your fingers need the workout! 🏋️‍♂️"
+        );
+      }
+    });
+    // Fallback for browsers: block paste event at DOM level
+    const domNode = inEditor.getDomNode();
+    if (domNode) {
+      domNode.addEventListener("paste", (e: ClipboardEvent) => {
+        e.preventDefault();
+        window.alert(
+          "Nice try! Copy-pasting is disabled. Your fingers need the workout! 🏋️‍♂️"
+        );
+        return false;
+      });
+    }
     console.log("Editor mounted:", typingEditorRef.current);
     // Set the initial value of the editor
   };
@@ -174,8 +178,6 @@ export default function TypeTest() {
     setMistakeCount(mistakes);
 
     // Calculate WPM (words per minute)
-    // WPM = (characters typed / 5) / (minutes elapsed)
-    // Only count correct characters up to the current input length
     let correctChars = 0;
     for (let i = 0; i < minLen; i++) {
       if (value[i] === testPassage[i]) correctChars++;
@@ -201,27 +203,48 @@ export default function TypeTest() {
       return;
     }
 
+    // Highlight per-character mistakes
     const model = typingEditorRef.current.getModel();
-    let decorations = [];
-    for (let i = 0; i < minLen; i++) {
+    if (!model) return;
+    const decorations = [];
+    for (let i = 0; i < value.length; i++) {
       const startPos = model.getPositionAt(i);
       const endPos = model.getPositionAt(i + 1);
-      if (value[i] === testPassage[i]) {
-        decorations.push({
-          range: new typingEditorMonacoRef.current.Range(
-            startPos.lineNumber,
-            startPos.column,
-            endPos.lineNumber,
-            endPos.column
-          ),
-          options: {
-            inlineClassName: "myInlineCorrect",
-            stickiness:
-              typingEditorMonacoRef.current.editor.TrackedRangeStickiness
-                .AlwaysGrowsWhenTypingAtEdges,
-          },
-        });
+      if (i < testPassage.length) {
+        if (value[i] === testPassage[i]) {
+          decorations.push({
+            range: new typingEditorMonacoRef.current.Range(
+              startPos.lineNumber,
+              startPos.column,
+              endPos.lineNumber,
+              endPos.column
+            ),
+            options: {
+              inlineClassName: "myInlineCorrect",
+              stickiness:
+                typingEditorMonacoRef.current.editor.TrackedRangeStickiness
+                  .AlwaysGrowsWhenTypingAtEdges,
+            },
+          });
+        } else {
+          // Highlight mistakes in red
+          decorations.push({
+            range: new typingEditorMonacoRef.current.Range(
+              startPos.lineNumber,
+              startPos.column,
+              endPos.lineNumber,
+              endPos.column
+            ),
+            options: {
+              inlineClassName: "myInlineHighlight",
+              stickiness:
+                typingEditorMonacoRef.current.editor.TrackedRangeStickiness
+                  .AlwaysGrowsWhenTypingAtEdges,
+            },
+          });
+        }
       } else {
+        // Extra characters beyond passage are also mistakes
         decorations.push({
           range: new typingEditorMonacoRef.current.Range(
             startPos.lineNumber,
@@ -238,156 +261,85 @@ export default function TypeTest() {
         });
       }
     }
-    if (value.length > testPassage.length) {
-      const startPos = model.getPositionAt(testPassage.length);
-      const endPos = model.getPositionAt(value.length);
-      decorations.push({
-        range: new typingEditorMonacoRef.current.Range(
-          startPos.lineNumber,
-          startPos.column,
-          endPos.lineNumber,
-          endPos.column
-        ),
-        options: {
-          inlineClassName: "myInlineHighlight",
-          stickiness:
-            typingEditorMonacoRef.current.editor.TrackedRangeStickiness
-              .AlwaysGrowsWhenTypingAtEdges,
-        },
-      });
-    }
     typingEditorRef.current.deltaDecorations([], decorations);
   };
 
   return (
     <div
-      style={{ display: "flex", flexDirection: "row", position: "relative" }}
+      style={{
+        display: "flex",
+        flex: 1,
+        flexDirection: "row",
+        position: "relative",
+        padding: 32,
+        gap: 32,
+        height: "100vh - 36px",
+        background: "#202124",
+        boxSizing: "border-box",
+        overflow: "hidden",
+      }}
     >
-      <div style={{ flex: 1 }}>
-        <div
-          style={{
-            marginBottom: 16,
-            display: "flex",
-            alignItems: "center",
-            gap: 16,
-          }}
-        >
-          <label htmlFor="passage-select" style={{ fontWeight: 500 }}>
-            Choose passage:
-          </label>
-          <select
-            id="passage-select"
-            value={selectedPassage}
-            onChange={handlePassageSelect}
-            disabled={timerActive}
-            style={{ padding: 6, fontSize: 16, borderRadius: 4 }}
-          >
-            {passages.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label}
-              </option>
-            ))}
-          </select>
-          {timerActive && (
-            <button
-              onClick={handleStop}
-              style={{
-                marginLeft: 16,
-                padding: "6px 18px",
-                fontSize: 16,
-                borderRadius: 4,
-                background: "#c00",
-                color: "#fff",
-                border: "none",
-                cursor: "pointer",
-              }}
-            >
-              Stop
-            </button>
-          )}
-        </div>
-        <Editor
-          height="500px"
-          width="100%"
-          defaultLanguage="javascript"
-          value={testPassage}
-          // onChange={handleEditorChange}
-          theme="vs-dark"
-          options={{
-            readOnly: true,
-            minimap: { enabled: true },
-            wordWrap: "on",
-            fontSize: 16,
-            lineNumbers: "on",
-            scrollBeyondLastLine: false,
-          }}
-          onMount={handlePassageEditorDidMount}
-        />
-        <Editor
-          height="500px"
-          width="100%"
-          defaultLanguage="javascript"
-          value={code}
-          onChange={handleEditorChange}
-          theme="vs-dark"
-          options={{
-            readOnly: isComplete,
-            minimap: { enabled: true },
-            wordWrap: "on",
-            fontSize: 16,
-            lineNumbers: "on",
-            scrollBeyondLastLine: false,
-            tabSize: 2,
-          }}
-          onMount={handleEditorDidMount}
-        />
-      </div>
       <div
         style={{
-          width: 200,
-          marginLeft: 24,
-          padding: 16,
-          background: "#181818",
-          color: "#fff",
-          borderRadius: 8,
-          height: "fit-content",
+          flex: 1,
+          minWidth: 0,
+          display: "flex",
+          flexDirection: "column",
         }}
       >
-        <h3>Mistakes</h3>
-        <div
-          style={{
-            fontSize: 32,
-            fontWeight: "bold",
-            color: mistakeCount > 0 ? "#ff3333" : "#00c800",
-          }}
-        >
-          {mistakeCount}
+        <ControlsBar
+          passages={passages}
+          selectedPassage={selectedPassage}
+          onSelect={handlePassageSelect}
+          timerActive={timerActive}
+          onStop={handleStop}
+          onRestart={handleRestart}
+          isComplete={isComplete}
+        />
+        <div style={{ display: "flex", flexDirection: "row", flex: 1 }}>
+          <div
+            className="editor-wrapper"
+            style={{ flex: 1, minWidth: 0, paddingRight: 16 }}
+          >
+            <Editor
+              height="50%"
+              width="100%"
+              defaultLanguage="javascript"
+              value={testPassage}
+              // onChange={handleEditorChange}
+              theme="vs-dark"
+              options={{
+                readOnly: true,
+                minimap: { enabled: false },
+                wordWrap: "on",
+                fontSize: 16,
+                lineNumbers: "on",
+                scrollBeyondLastLine: false,
+              }}
+              onMount={handlePassageEditorDidMount}
+            />
+            <Editor
+              height="50%"
+              width="100%"
+              defaultLanguage="javascript"
+              value={code}
+              onChange={handleEditorChange}
+              theme="vs-dark"
+              options={{
+                readOnly: isComplete,
+                minimap: { enabled: false },
+                wordWrap: "on",
+                fontSize: 16,
+                lineNumbers: "on",
+                scrollBeyondLastLine: false,
+                tabSize: 2,
+              }}
+              onMount={handleEditorDidMount}
+            />
+          </div>
+          <StatsPanel mistakeCount={mistakeCount} timer={timer} wpm={wpm} />
         </div>
-        <h3 style={{ marginTop: 32 }}>Timer</h3>
-        <div style={{ fontSize: 32, fontWeight: "bold" }}>{timer}s</div>
-        <h3 style={{ marginTop: 32 }}>WPM</h3>
-        <div style={{ fontSize: 32, fontWeight: "bold" }}>{wpm}</div>
       </div>
-      <button
-        onClick={handleRestart}
-        disabled={!isComplete}
-        style={{
-          position: "fixed",
-          bottom: 32,
-          right: 32,
-          padding: "14px 32px",
-          fontSize: 20,
-          borderRadius: 8,
-          background: "#222",
-          color: "#fff",
-          border: "none",
-          cursor: isComplete ? "pointer" : "not-allowed",
-          opacity: isComplete ? 1 : 0.5,
-          zIndex: 1000,
-        }}
-      >
-        Restart Test
-      </button>
       <style jsx global>{`
         .myInlineHighlight {
           background-color: rgba(255, 0, 0, 0.3);

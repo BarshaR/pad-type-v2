@@ -1,16 +1,7 @@
 import { ModeToggle } from "@/components/theme-toggle";
-import {
-  NavigationMenu,
-  NavigationMenuContent,
-  NavigationMenuIndicator,
-  NavigationMenuItem,
-  NavigationMenuLink,
-  NavigationMenuList,
-  NavigationMenuTrigger,
-  navigationMenuTriggerStyle,
-  NavigationMenuViewport,
-} from "@/components/ui/navigation-menu";
-import Link from "next/link";
+import { NavigationMenu } from "@/components/ui/navigation-menu";
+// import Link from "next/link";
+import { PadTypeLogo } from "../type-test/PadTypeLogo";
 
 export default function Navbar() {
   return (
@@ -35,7 +26,7 @@ export default function Navbar() {
         </NavigationMenuList> */}
       </div>
       <div className="flex items-center justify-center w-1/3">
-        <h1>PadType</h1>
+        <PadTypeLogo />
       </div>
       <div className="flex justify-end w-1/3">
         <ModeToggle />
